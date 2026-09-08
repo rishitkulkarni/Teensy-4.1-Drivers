@@ -1,0 +1,29 @@
+# Teensy 4.1 Drivers
+
+Hardware driver modules for the **Teensy 4.1**, developed using **PlatformIO and Arduino**.
+
+Each driver is implemented as a separate module and includes its own tests using the **Unity testing framework**.
+
+### Build
+
+```bash
+pio run
+```
+
+### Upload
+
+```bash
+pio run -t upload
+```
+
+### Run Tests
+
+```bash
+pio test
+```
+
+Run a specific driver test:
+
+```bash
+pio test -f <test_name>
+```
