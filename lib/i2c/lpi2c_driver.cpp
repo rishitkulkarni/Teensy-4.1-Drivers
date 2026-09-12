@@ -1,119 +1,165 @@
 #include "lpi2c_driver.h"
 
-void lpi2c1_init(void) {
-    // 1. Enable the clock gate for LPI2C1
-    // CCM_CCGR2, cg3 is LPI2C1. Set to 3 (Clock on during all modes)
-    CCM_CCGR2 |= CCM_CCGR2_LPI2C1(CCM_CCGR_ON);
+IMXRT_LPI2C_t* lpi2c_init(uint8_t bus_number) {
+    IMXRT_LPI2C_t *port = nullptr;
+    uint32_t pad_cfg = 0x1F8B0; // 22K Pull-up, Open Drain, Fast Slew Rate
 
-    // 2. Configure IOMUXC for Pins 18 and 19 to act as LPI2C1
-    // Pin 19 (SCL) = GPIO_AD_B1_00 (ALT3)
-    // Pin 18 (SDA) = GPIO_AD_B1_01 (ALT3)
+    if (bus_number == 1) {
+        // Teensy Pins 18 (SDA) / 19 (SCL) -> LPI2C1
+        port = &IMXRT_LPI2C1;
+        CCM_CCGR2 |= CCM_CCGR2_LPI2C1(CCM_CCGR_ON);
 
-    // Set MUX to ALT3 (LPI2C) and enable SION (Software Input On)
-    IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_00 = 3 | 0x10;
-    IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_01 = 3 | 0x10;
+        IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_00 = 3 | 0x10; // SCL
+        IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_01 = 3 | 0x10; // SDA
+        IOMUXC_LPI2C1_SCL_SELECT_INPUT = 0;
+        IOMUXC_LPI2C1_SDA_SELECT_INPUT = 0;
+        IOMUXC_SW_PAD_CTL_PAD_GPIO_AD_B1_00 = pad_cfg;
+        IOMUXC_SW_PAD_CTL_PAD_GPIO_AD_B1_01 = pad_cfg;
 
-    // Set Daisy Chain input selects so the peripheral reads the correct pad
-    IOMUXC_LPI2C1_SCL_SELECT_INPUT = 1; // 1 maps to GPIO_AD_B1_00
-    IOMUXC_LPI2C1_SDA_SELECT_INPUT = 1; // 1 maps to GPIO_AD_B1_01
+    } else if (bus_number == 3) {
+        // Teensy Pins 17 (SDA) / 16 (SCL) -> LPI2C3
+        port = &IMXRT_LPI2C3;
+        CCM_CCGR2 |= CCM_CCGR2_LPI2C3(CCM_CCGR_ON);
 
-    // Pad Configuration: 22K Pull-up, Open Drain, Fast Slew Rate, DSE (Drive Strength)
-    uint32_t pad_cfg = 0x1F8B0;
-    IOMUXC_SW_PAD_CTL_PAD_GPIO_AD_B1_00 = pad_cfg;
-    IOMUXC_SW_PAD_CTL_PAD_GPIO_AD_B1_01 = pad_cfg;
+        IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_07 = 1 | 0x10; // SCL
+        IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_06 = 1 | 0x10; // SDA
+        IOMUXC_LPI2C3_SCL_SELECT_INPUT = 2;
+        IOMUXC_LPI2C3_SDA_SELECT_INPUT = 2;
+        IOMUXC_SW_PAD_CTL_PAD_GPIO_AD_B1_07 = pad_cfg;
+        IOMUXC_SW_PAD_CTL_PAD_GPIO_AD_B1_06 = pad_cfg;
 
-    // 3. Reset and Disable the LPI2C1 Master before configuring
-    IMXRT_LPI2C1.MCR &= ~LPI2C_MCR_MEN;
-    IMXRT_LPI2C1.MCR |= LPI2C_MCR_RST;
-    IMXRT_LPI2C1.MCR &= ~LPI2C_MCR_RST;
+    }
+    else if (bus_number == 4) {
+        // Teensy Pins 25 (SDA) / 24 (SCL) -> LPI2C4
+        port = &IMXRT_LPI2C4;
 
-    // 4. Set Timing Parameters for 1 Mbps (Fast-Mode Plus)
-    // Assuming Teensy default LPI2C root clock of 60 MHz.
-    // Based on NXP manual Table 47-5 (60MHz, 1 Mbps)
-    IMXRT_LPI2C1.MCFGR1 = LPI2C_MCFGR1_PRESCALE(2); // Prescale by 4 (2^2)
-    IMXRT_LPI2C1.MCFGR2 = LPI2C_MCFGR2_FILTSCL(2) | LPI2C_MCFGR2_FILTSDA(2); // Glitch filters
+        // FIX: Manually enable Clock Gate 12 (bits 24-25) in CCGR6 for LPI2C4
+        CCM_CCGR6 |= (3 << 24);
 
-    IMXRT_LPI2C1.MCCR0 = LPI2C_MCCR0_SETHOLD(0x0F) |
-                         LPI2C_MCCR0_CLKLO(0x11) |
-                         LPI2C_MCCR0_CLKHI(0x06) |
-                         LPI2C_MCCR0_DATAVD(0x05);
+        IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B0_12 = 0 | 0x10; // SCL
+        IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B0_13 = 0 | 0x10; // SDA
+        IOMUXC_LPI2C4_SCL_SELECT_INPUT = 0;
+        IOMUXC_LPI2C4_SDA_SELECT_INPUT = 0;
+        IOMUXC_SW_PAD_CTL_PAD_GPIO_AD_B0_12 = pad_cfg;
+        IOMUXC_SW_PAD_CTL_PAD_GPIO_AD_B0_13 = pad_cfg;
+    }
+    else {
+        return nullptr; // Unsupported bus
+    }
 
-    // 5. FIFO configuration (0 = transmit when empty, receive when >0)
-    IMXRT_LPI2C1.MFCR = LPI2C_MFCR_TXWATER(0) | LPI2C_MFCR_RXWATER(0);
+    // Common Configuration
+    port->MCR &= ~LPI2C_MCR_MEN;
+    port->MCR |= LPI2C_MCR_RST;
+    port->MCR &= ~LPI2C_MCR_RST;
 
-    // 6. Enable the Master
-    IMXRT_LPI2C1.MCR |= LPI2C_MCR_MEN;
+    port->MCFGR1 = LPI2C_MCFGR1_PRESCALE(2);
+    port->MCFGR2 = LPI2C_MCFGR2_FILTSCL(2) | LPI2C_MCFGR2_FILTSDA(2);
+
+    port->MCCR0 = LPI2C_MCCR0_SETHOLD(0x0F) | LPI2C_MCCR0_CLKLO(0x11) |
+                  LPI2C_MCCR0_CLKHI(0x06) | LPI2C_MCCR0_DATAVD(0x05);
+
+    port->MFCR = LPI2C_MFCR_TXWATER(0) | LPI2C_MFCR_RXWATER(0);
+    port->MCR |= LPI2C_MCR_MEN;
+
+    return port;
 }
 
-bool lpi2c1_write(uint8_t device_addr, const uint8_t *data, uint32_t length) {
-    // Wait for Bus Idle (MSR[BBF] == 0)
-    while (IMXRT_LPI2C1.MSR & LPI2C_MSR_BBF);
+bool lpi2c_write(IMXRT_LPI2C_t *port, uint8_t device_addr, const uint8_t *data, uint32_t length, bool send_stop) {
+    if (!port) return false;
+    uint32_t timeout = 100000;
 
-    // Clear any previous STOP detect flags
-    IMXRT_LPI2C1.MSR = LPI2C_MSR_SDF | LPI2C_MSR_NDF;
+    // 1. Wait for Bus Idle with a timeout
+    while (port->MSR & LPI2C_MSR_BBF) {
+        if (--timeout == 0) return false;
+    }
 
-    // Send START condition + Device Address (Write bit = 0)
-    IMXRT_LPI2C1.MTDR = LPI2C_CMD_START | (device_addr << 1);
+    // 2. Clear any previous STOP or NACK flags
+    port->MSR = LPI2C_MSR_SDF | LPI2C_MSR_NDF;
 
-    // Transmit data bytes
+    // 3. Send START condition + Device Address (Write bit = 0)
+    port->MTDR = LPI2C_CMD_START | (device_addr << 1);
+
+    // 4. Transmit data bytes
     for (uint32_t i = 0; i < length; i++) {
-        // Wait until Transmit FIFO has space (TDF = Transmit Data Flag)
-        while (!(IMXRT_LPI2C1.MSR & LPI2C_MSR_TDF));
-        IMXRT_LPI2C1.MTDR = LPI2C_CMD_TXD | data[i];
-    }
+        timeout = 100000;
 
-    // Send STOP condition
-    IMXRT_LPI2C1.MTDR = LPI2C_CMD_STOP;
-
-    // Wait for STOP to complete (SDF) or a NACK (NDF)
-    while (!(IMXRT_LPI2C1.MSR & LPI2C_MSR_SDF)) {
-        if (IMXRT_LPI2C1.MSR & LPI2C_MSR_NDF) { // NACK detected
-            IMXRT_LPI2C1.MSR = LPI2C_MSR_NDF; // Clear NACK flag
-            IMXRT_LPI2C1.MTDR = LPI2C_CMD_STOP; // Force a STOP to release bus
-            return false;
+        // Wait for Transmit Data Flag (TDF), watch for NACK (NDF)
+        while (!(port->MSR & LPI2C_MSR_TDF)) {
+            if (port->MSR & LPI2C_MSR_NDF) {
+                port->MSR = LPI2C_MSR_NDF;
+                port->MTDR = LPI2C_CMD_STOP;
+                return false;
+            }
+            if (--timeout == 0) {
+                port->MTDR = LPI2C_CMD_STOP;
+                return false;
+            }
         }
+        port->MTDR = LPI2C_CMD_TXD | data[i];
     }
 
-    // Clear STOP flag
-    IMXRT_LPI2C1.MSR = LPI2C_MSR_SDF;
+    // 5. Send STOP condition only if requested (IMUs often need this set to false for Repeated Start)
+    if (send_stop) {
+        port->MTDR = LPI2C_CMD_STOP;
+
+        // Wait for STOP to complete (SDF) or a NACK (NDF)
+        timeout = 100000;
+        while (!(port->MSR & LPI2C_MSR_SDF)) {
+            if (port->MSR & LPI2C_MSR_NDF) {
+                port->MSR = LPI2C_MSR_NDF;
+                port->MTDR = LPI2C_CMD_STOP;
+                return false;
+            }
+            if (--timeout == 0) return false;
+        }
+
+        // Clear STOP flag
+        port->MSR = LPI2C_MSR_SDF;
+    }
+
     return true;
 }
 
-bool lpi2c1_read(uint8_t device_addr, uint8_t *data, uint32_t length) {
-    if (length == 0 || length > 256) return false;
+bool lpi2c_read(IMXRT_LPI2C_t *port, uint8_t device_addr, uint8_t *data, uint32_t length) {
+    if (!port || length == 0 || length > 256) return false;
+    uint32_t timeout = 100000;
 
-    // Wait for Bus Idle
-    while (IMXRT_LPI2C1.MSR & LPI2C_MSR_BBF);
+    while (port->MSR & LPI2C_MSR_BBF) {
+        if (--timeout == 0) return false;
+    }
 
-    IMXRT_LPI2C1.MSR = LPI2C_MSR_SDF | LPI2C_MSR_NDF;
+    port->MSR = LPI2C_MSR_SDF | LPI2C_MSR_NDF;
+    port->MTDR = LPI2C_CMD_START | (device_addr << 1) | 0x01;
+    port->MTDR = LPI2C_CMD_RXD | (length - 1);
 
-    // Send START + Device Address (Read bit = 1)
-    IMXRT_LPI2C1.MTDR = LPI2C_CMD_START | (device_addr << 1) | 0x01;
-
-    // Issue Receive Command to RX FIFO (Instructs peripheral to clock in `length` bytes)
-    IMXRT_LPI2C1.MTDR = LPI2C_CMD_RXD | (length - 1);
-
-    // Read data from Receive FIFO
     for (uint32_t i = 0; i < length; i++) {
-        // Wait for data to arrive in RX FIFO (RDF = Receive Data Flag)
-        while (!(IMXRT_LPI2C1.MSR & LPI2C_MSR_RDF)) {
-             if (IMXRT_LPI2C1.MSR & LPI2C_MSR_NDF) { // NACK detected on address
-                 IMXRT_LPI2C1.MSR = LPI2C_MSR_NDF;
-                 IMXRT_LPI2C1.MTDR = LPI2C_CMD_STOP;
+        timeout = 100000;
+        while (!(port->MSR & LPI2C_MSR_RDF)) {
+             if (port->MSR & LPI2C_MSR_NDF) {
+                 port->MSR = LPI2C_MSR_NDF;
+                 port->MTDR = LPI2C_CMD_STOP;
+                 return false;
+             }
+             if (--timeout == 0) {
+                 port->MTDR = LPI2C_CMD_STOP;
                  return false;
              }
         }
-        // Extract 8 bits of data
-        // data[i] = (IMXRT_LPI2C1.MRDR & LPI2C_MRDR_DATA_MASK);
-        data[i] = (IMXRT_LPI2C1.MRDR & 0xFF);
+        data[i] = (port->MRDR & 0xFF);
     }
 
-    // Send STOP condition
-    IMXRT_LPI2C1.MTDR = LPI2C_CMD_STOP;
+    port->MTDR = LPI2C_CMD_STOP;
 
-    // Wait for STOP to hit the bus
-    while (!(IMXRT_LPI2C1.MSR & LPI2C_MSR_SDF));
-    IMXRT_LPI2C1.MSR = LPI2C_MSR_SDF;
+    timeout = 100000;
+    while (!(port->MSR & LPI2C_MSR_SDF)) {
+        if (port->MSR & LPI2C_MSR_NDF) {
+            port->MSR = LPI2C_MSR_NDF;
+            port->MTDR = LPI2C_CMD_STOP;
+            return false;
+        }
+        if (--timeout == 0) return false;
+    }
 
+    port->MSR = LPI2C_MSR_SDF;
     return true;
 }
