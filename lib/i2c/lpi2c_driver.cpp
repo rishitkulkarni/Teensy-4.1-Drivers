@@ -33,13 +33,15 @@ IMXRT_LPI2C_t* lpi2c_init(uint8_t bus_number) {
         // Teensy Pins 25 (SDA) / 24 (SCL) -> LPI2C4
         port = &IMXRT_LPI2C4;
 
-        // FIX: Manually enable Clock Gate 12 (bits 24-25) in CCGR6 for LPI2C4
+        // Manually enable Clock Gate 12 (bits 24-25) in CCGR6 for LPI2C4
         CCM_CCGR6 |= (3 << 24);
 
-        IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B0_12 = 0 | 0x10; // SCL
-        IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B0_13 = 0 | 0x10; // SDA
-        IOMUXC_LPI2C4_SCL_SELECT_INPUT = 0;
-        IOMUXC_LPI2C4_SDA_SELECT_INPUT = 0;
+        // FIX: Change MUX mode from 0 to 3 for LPI2C4
+        IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B0_12 = 3 | 0x10; // SCL
+        IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B0_13 = 3 | 0x10; // SDA
+
+        IOMUXC_LPI2C4_SCL_SELECT_INPUT = 1;
+        IOMUXC_LPI2C4_SDA_SELECT_INPUT = 1;
         IOMUXC_SW_PAD_CTL_PAD_GPIO_AD_B0_12 = pad_cfg;
         IOMUXC_SW_PAD_CTL_PAD_GPIO_AD_B0_13 = pad_cfg;
     }
@@ -120,12 +122,14 @@ bool lpi2c_write(IMXRT_LPI2C_t *port, uint8_t device_addr, const uint8_t *data, 
     return true;
 }
 
-bool lpi2c_read(IMXRT_LPI2C_t *port, uint8_t device_addr, uint8_t *data, uint32_t length) {
+bool lpi2c_read(IMXRT_LPI2C_t *port, uint8_t device_addr, uint8_t *data, uint32_t length, bool repeated_start) {
     if (!port || length == 0 || length > 256) return false;
     uint32_t timeout = 100000;
 
-    while (port->MSR & LPI2C_MSR_BBF) {
-        if (--timeout == 0) return false;
+    if (!repeated_start) {
+        while (port->MSR & LPI2C_MSR_BBF) {
+            if (--timeout == 0) return false;
+        }
     }
 
     port->MSR = LPI2C_MSR_SDF | LPI2C_MSR_NDF;

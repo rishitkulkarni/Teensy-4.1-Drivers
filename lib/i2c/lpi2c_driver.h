@@ -15,6 +15,6 @@ IMXRT_LPI2C_t* lpi2c_init(uint8_t bus_number);
 // Pass the port pointer (e.g., from lpi2c_init) to target a specific bus
 // Add the send_stop parameter (defaults to true)
 bool lpi2c_write(IMXRT_LPI2C_t *port, uint8_t device_addr, const uint8_t *data, uint32_t length, bool send_stop = true);
-bool lpi2c_read(IMXRT_LPI2C_t *port, uint8_t device_addr, uint8_t *data, uint32_t length);
-
+// bool lpi2c_read(IMXRT_LPI2C_t *port, uint8_t device_addr, uint8_t *data, uint32_t length);
+bool lpi2c_read(IMXRT_LPI2C_t *port, uint8_t device_addr, uint8_t *data, uint32_t length, bool repeated_start = false);
 #endif // LPI2C_DRIVER_H
